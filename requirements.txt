@@ -1,5 +1,8 @@
 streamlit
 PyPDF2
-scikit-learn
+sentence-transformers
+faiss-cpu
+numpy
 deep-translator
 langdetect
+torch
