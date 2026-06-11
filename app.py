@@ -1,6 +1,5 @@
 import re
 import streamlit as st
-import google.generativeai as genai
 from PyPDF2 import PdfReader
 from sentence_transformers import SentenceTransformer
 from deep_translator import GoogleTranslator
@@ -14,16 +13,13 @@ st.set_page_config(
 )
 
 st.title("📄 Multilingual Citizen Service Chatbot")
-
-# Gemini API Key from Streamlit Secrets
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-2.5-flash")
+st.write("Upload a PDF and ask questions in any language.")
 
 @st.cache_resource
 def load_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
-embed_model = load_model()
+model = load_model()
 
 pdf = st.file_uploader("Upload PDF", type="pdf")
 
@@ -32,7 +28,6 @@ if pdf:
     text = ""
 
     with st.spinner("Reading PDF..."):
-
         reader = PdfReader(pdf)
 
         for page in reader.pages:
@@ -46,25 +41,30 @@ if pdf:
         st.error("No readable text found in PDF.")
         st.stop()
 
+    # Split into sentences
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+
     chunks = []
 
-    chunk_size = 800
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if len(sentence) > 30:
+            chunks.append(sentence)
 
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i + chunk_size]
-        if len(chunk.strip()) > 100:
-            chunks.append(chunk)
+    if not chunks:
+        st.error("Could not create searchable content.")
+        st.stop()
 
     with st.spinner("Creating search index..."):
 
-        embeddings = embed_model.encode(
+        embeddings = model.encode(
             chunks,
             convert_to_numpy=True
         )
 
-        dim = embeddings.shape[1]
+        dimension = embeddings.shape[1]
 
-        index = faiss.IndexFlatL2(dim)
+        index = faiss.IndexFlatL2(dimension)
 
         index.add(
             embeddings.astype("float32")
@@ -89,45 +89,17 @@ if pdf:
         except:
             question_en = question
 
-        q_embedding = embed_model.encode(
+        q_embedding = model.encode(
             [question_en],
             convert_to_numpy=True
         )
 
         distances, indices = index.search(
             q_embedding.astype("float32"),
-            3
+            1
         )
 
-        context = "\n\n".join(
-            [chunks[i] for i in indices[0]]
-        )
-
-        prompt = f"""
-You are a citizen service assistant.
-
-Answer the user's question ONLY using the context below.
-
-Give a short and clear answer.
-
-If the answer is not found, say:
-"Information not found in the document."
-
-Context:
-{context}
-
-Question:
-{question_en}
-"""
-
-        with st.spinner("Generating answer..."):
-
-            try:
-                response = gemini.generate_content(prompt)
-                english_answer = response.text.strip()
-            except Exception as e:
-                st.error(f"Gemini Error: {e}")
-                st.stop()
+        answer = chunks[indices[0][0]]
 
         st.subheader("🌍 Answers")
 
@@ -143,19 +115,19 @@ Question:
 
             try:
                 if code == "en":
-                    translated = english_answer
+                    translated = answer
                 else:
                     translated = GoogleTranslator(
                         source="en",
                         target=code
-                    ).translate(english_answer)
+                    ).translate(answer)
 
                 st.markdown(f"### {title}")
                 st.write(translated)
 
             except:
                 st.markdown(f"### {title}")
-                st.write("Translation unavailable")
+                st.write(answer)
 
-        with st.expander("📖 Source Context"):
-            st.write(context)
+        with st.expander("📖 Source Text"):
+            st.write(answer)
