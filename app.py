@@ -7,7 +7,9 @@ import faiss
 import numpy as np
 
 st.set_page_config(page_title="Multilingual Citizen Service Chatbot")
+
 st.title("📄 Multilingual Citizen Service Chatbot")
+st.write("Upload an official document and ask questions in any language.")
 
 @st.cache_resource
 def load_model():
@@ -18,6 +20,7 @@ model = load_model()
 pdf = st.file_uploader("Upload PDF", type="pdf")
 
 if pdf:
+
     text = ""
 
     reader = PdfReader(pdf)
@@ -40,19 +43,23 @@ if pdf:
         embeddings = model.encode(chunks)
 
         dim = embeddings.shape[1]
-        index = faiss.IndexFlatL2(dim)
-        index.add(np.array(embeddings, dtype=np.float32))
 
-    st.success("PDF Processed Successfully!")
+        index = faiss.IndexFlatL2(dim)
+
+        index.add(
+            np.array(embeddings, dtype=np.float32)
+        )
+
+    st.success("PDF processed successfully!")
 
     question = st.text_input("Ask your question")
 
     if question:
 
         try:
-            lang = detect(question)
+            detected_lang = detect(question)
         except:
-            lang = "en"
+            detected_lang = "en"
 
         try:
             q_en = GoogleTranslator(
@@ -73,19 +80,32 @@ if pdf:
             [chunks[i] for i in I[0]]
         )
 
-        try:
-            if lang != "en":
-                answer = GoogleTranslator(
-                    source="en",
-                    target=lang
+        st.subheader("🌍 Answers in Multiple Languages")
+
+        languages = {
+            "English": "en",
+            "Telugu": "te",
+            "Hindi": "hi",
+            "Tamil": "ta",
+            "Kannada": "kn"
+        }
+
+        for name, code in languages.items():
+
+            try:
+                translated = GoogleTranslator(
+                    source="auto",
+                    target=code
                 ).translate(answer)
-        except:
-            pass
 
-        st.subheader("Answer")
-        st.write(answer)
+                st.markdown(f"### {name}")
+                st.write(translated)
 
-        with st.expander("Source Text"):
+            except:
+                st.markdown(f"### {name}")
+                st.write("Translation unavailable")
+
+        with st.expander("📖 Source Text Used"):
             for i in I[0]:
                 st.write(chunks[i])
                 st.write("---")
